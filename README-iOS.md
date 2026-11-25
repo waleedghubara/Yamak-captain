@@ -7,7 +7,7 @@ This package builds **only the driver app**:
 | Driver (captain) | يمك كابتن | `com.waleedghubara.yamak.captain` | `production` |
 
 - No `APP_VARIANT` needed: this package is fixed to the captain app (`app.config.ts`).
-- Version: `1.3.0`. Build numbers are managed by EAS (`"appVersionSource": "remote"`).
+- Version: `1.4.0`. Build numbers are managed by EAS (`"appVersionSource": "remote"`).
 - Backend: `https://api.yamaktaxi.com` (in `yamak.config.json`; do not change).
 - `ios/` and `android/` are generated (Continuous Native Generation). Do not edit them by hand.
 - iOS bundle identifier can be overridden with `IOS_BUNDLE_IDENTIFIER`; the default is
@@ -17,12 +17,19 @@ This package builds **only the driver app**:
 - The Android application ID remains `iq.yamak.captain`.
 - The customer app (يمك تكسي, `iq.yamak.app`) is a separate package.
 
-## What's new in 1.3.0
-- Fixed captains being logged out after swiping the app away while online (background location).
-- Admin announcements pop up inside the app + a Notifications screen (bell icon on the home screen).
-- Balance shown as green "current balance" (turns red as it runs out) or red "due to company".
-- Rotating ad banner.
-- New dependency: `expo-live-activity@0.4.2` (used by the customer app; nothing to set up for the captain app). Run `npm ci` before building.
+## What's new in 1.4.0 (read before building)
+Full technical list: **`CHANGES-1.4.0.md`** in this package.
+
+- **New dependencies — run `npm ci` again:** `expo-sharing@~57.0.26`, `expo-audio@~57.0.5`, `expo-asset@~57.0.18`.
+  `expo-asset` is pinned deliberately; without the pin npm hoists a newer copy and the JS bundle fails to build.
+- **New iOS extension — customer app only.** `expo-sharing` adds a Share Extension so a customer can share a WhatsApp location straight into the app.
+  Target `expo-sharing-extension`, bundle ID **`com.waleedghubara.yamak.customer.expo-sharing-extension`**, App Group **`group.com.waleedghubara.yamak.customer`**.
+  Run the **first** customer build interactively (no `--non-interactive`) and sign in to Apple when asked, so EAS registers the App ID and the App Group. The customer app now has **two** extensions (this one and Live Activity).
+- **Custom notification sound — captain app only:** `assets/yamak_ring.wav` registered through `expo-notifications`. It is the ride-offer ring (three rings, then it stops).
+- **New Info.plist key:** `LSApplicationQueriesSchemes = ["maps", "comgooglemaps", "waze"]`, so the captain app can hand the route to Apple Maps / Google Maps / Waze.
+- **Dark mode:** `userInterfaceStyle` is now `automatic` (was `light`). Both apps follow the iPhone appearance setting; every screen was restyled for it.
+- **Khatti (shared lines)** in both apps, **one ride category** instead of taxi/private, rebuilt captain home screen, promo codes applied with one tap, captain rewards, offline caching and an update gate.
+- Unchanged: bundle identifiers, the Live Activity extension, EAS profiles, and the backend URL.
 
 ## Requirements
 - Node.js 20 or newer, npm
@@ -68,3 +75,9 @@ cd ios && pod install && open *.xcworkspace
 - هذا الملف لتطبيق **يمك كابتن** بس (`com.waleedghubara.yamak.captain` على iOS، و`iq.yamak.captain` على Android).
 - البناء الأسهل بـ EAS: `eas build -p ios --profile production`، أو بـ Xcode على ماك.
 - تُرسل بيانات حساب المراجعة إلى Apple عبر القنوات الخاصة المناسبة، ولا تُحفظ في المستودع.
+
+## Store screenshots
+
+`screenshots/` holds the 1.4.0 store images for both variants (6 customer + 6 captain)
+plus each variant's 512x512 icon. See `screenshots/README.md` for the screen-by-screen list.
+All personal data inside the images is demo data.

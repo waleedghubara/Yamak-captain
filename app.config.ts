@@ -1,5 +1,5 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -22,18 +22,25 @@ const file = JSON.parse(readFileSync(path.join(__dirname, 'yamak.config.json'), 
  *   APP_VARIANT=captain   ← "يمك كابتن" (تطبيق الكابتن)
  * كل واحد ينزل بالمتجر كتطبيق مستقل (bundle id مختلف).
  */
-// هذي النسخة لتطبيق الكابتن فقط (يمك كابتن)
-const VARIANT: 'captain' | 'customer' = 'captain';
+// هذا المستودع يبني تطبيق الكابتن فقط، فالافتراضي captain حتى لو ما انضبط APP_VARIANT
+const VARIANT = process.env.APP_VARIANT === 'customer' ? 'customer' : 'captain';
 const CAPTAIN = VARIANT === 'captain';
 const BRAND = '#6323AF';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || file.apiUrl;
 const MAP_STYLE_URL = process.env.EXPO_PUBLIC_MAP_STYLE_URL || file.mapStyleUrl;
 const PROJECT_ID = (CAPTAIN ? file.easProjectIdCaptain : file.easProjectIdCustomer) || process.env.EAS_PROJECT_ID || '';
-const IOS_BUNDLE_IDENTIFIER =
-  process.env.IOS_BUNDLE_IDENTIFIER || 'com.waleedghubara.yamak.captain';
 // أندرويد يمنع http العادي بالنسخ النهائية — نسمح بيه فقط إذا السيرفر بدون https (للتجربة على الشبكة المحلية)
 const ALLOW_HTTP = API_URL.startsWith('http://');
+// إشعارات أندرويد تحتاج ملف Firebase: ينحط بنفس المجلد باسم google-services.json (يشتغل للتطبيقين)
+// معرّف التطبيق على آبل — حسابات الشركة الناشرة. IOS_BUNDLE_IDENTIFIER يغلب عليه إذا موجود
+const IOS_BUNDLE_IDENTIFIER =
+  process.env.IOS_BUNDLE_IDENTIFIER ||
+  (CAPTAIN ? 'com.waleedghubara.yamak.captain' : 'com.waleedghubara.yamak.customer');
+
+const GOOGLE_SERVICES = existsSync(path.join(__dirname, 'google-services.json')) ? './google-services.json' : undefined;
+// متابعة الرحلة على شاشة قفل الآيفون (Live Activity) — تطبيق الزبون فقط. LIVE_ACTIVITY=0 يطفيها
+const LIVE_ACTIVITY = !CAPTAIN && process.env.LIVE_ACTIVITY !== '0';
 const LOCATION_TEXT = CAPTAIN
   ? 'يمك كابتن يستخدم موقعك وانت متصل أو بالرحلة، حتى لو التطبيق بالخلفية أو الشاشة مطفية، حتى يوصلك أقرب الطلبات ويتابع الزبون وصولك ويشتغل دليل الطريق.'
   : 'يمك يحتاج موقعك حتى يحدد نقطة الانطلاق ويوصلك أقرب كابتن.';
@@ -44,17 +51,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: CAPTAIN ? 'يمك كابتن' : 'يمك تكسي',
   slug: CAPTAIN ? 'yamak-captain' : 'yamak',
   scheme: CAPTAIN ? 'yamakcaptain' : 'yamak',
-  version: '1.3.0',
+  version: '1.4.0',
   orientation: 'portrait',
   icon: CAPTAIN ? './assets/icon-captain.png' : './assets/icon.png',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
   ios: {
     bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
-    buildNumber: process.env.BUILD_NUMBER || '1',
     supportsTablet: false,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       CFBundleAllowMixedLocalizations: true,
+      // «افتح بتطبيق ملاحة»: نفحص المثبت منها بـ canOpenURL (شرط آيفون)
+      LSApplicationQueriesSchemes: ['maps', 'comgooglemaps', 'waze'],
       ...(ALLOW_HTTP ? { NSAppTransportSecurity: { NSAllowsArbitraryLoads: true } } : {}),
     },
     // أسباب استخدام واجهات iOS الحساسة (شرط App Store) — لمكتبات React Native الأساسية
@@ -69,6 +77,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: CAPTAIN ? 'iq.yamak.captain' : 'iq.yamak.app',
+    ...(GOOGLE_SERVICES ? { googleServicesFile: GOOGLE_SERVICES } : {}),
     adaptiveIcon: {
       foregroundImage: CAPTAIN ? './assets/adaptive-foreground-captain.png' : './assets/adaptive-foreground.png',
       backgroundImage: CAPTAIN ? './assets/adaptive-background-captain.png' : './assets/adaptive-background.png',
@@ -76,6 +85,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION', 'CAMERA'],
     predictiveBackGestureEnabled: false,
+    // موقع منشور بالواتساب: «يمك تكسي» يطلع بقائمة الفتح (تطبيق الزبون بس)
+    ...(CAPTAIN
+      ? {}
+      : {
+          intentFilters: [
+            { action: 'VIEW', category: ['DEFAULT', 'BROWSABLE'], data: [{ scheme: 'geo' }] },
+            {
+              action: 'VIEW',
+              category: ['DEFAULT', 'BROWSABLE'],
+              data: [
+                { scheme: 'https', host: 'maps.app.goo.gl' },
+                { scheme: 'https', host: 'maps.google.com' },
+                { scheme: 'https', host: 'www.google.com', pathPrefix: '/maps' },
+              ],
+            },
+          ],
+        }),
   },
   plugins: [
     'expo-router',
@@ -110,9 +136,25 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         icon: './assets/notification-icon.png',
         color: BRAND,
+        // رنة الطلب الجديد لقناة offers (الكابتن بس) — 12 ثانية بنمط رنين المكالمة
+        ...(CAPTAIN ? { sounds: ['./assets/yamak_ring.wav'] } : {}),
+        enableRemoteNotifications: true,
         enableBackgroundRemoteNotifications: false,
       },
     ],
+    // «مشاركة» موقع من الواتساب إلى «يمك تكسي» مباشرة (تطبيق الزبون بس)
+    ...(CAPTAIN
+      ? []
+      : [
+          [
+            'expo-sharing',
+            {
+              android: { enabled: true, singleShareMimeTypes: ['text/plain'] },
+              ios: { enabled: true, activationRule: { supportsText: true, supportsWebUrlWithMaxCount: 1 } },
+            },
+          ] as [string, Record<string, unknown>],
+        ]),
+    ...(LIVE_ACTIVITY ? ['expo-live-activity'] : []),
     '@maplibre/maplibre-react-native',
     ['expo-build-properties', { android: { usesCleartextTraffic: ALLOW_HTTP } }],
   ],
